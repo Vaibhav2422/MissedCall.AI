@@ -231,7 +231,19 @@ class SMSHandler:
         return None
 
 # Use the existing SMS handler instance from sms_handler module
-from .sms_handler import SMSHandler
+try:
+    from sms_handler import SMSHandler
+except ImportError:
+    try:
+        from .sms_handler import SMSHandler
+    except ImportError:
+        # Fallback: Define SMSHandler inline if import fails
+        class SMSHandler:
+            def __init__(self):
+                self.sms_database = {}
+            
+            def extract_sms_for_number(self, phone_number, limit=2):
+                return None
 
 # Create an instance of the SMS handler
 sms_handler = SMSHandler()
