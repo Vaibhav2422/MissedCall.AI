@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+python-dotenv
+openai==0.28.1
+requests
+streamlit
+streamlit-mic-recorder
+pydantic
+python-multipart
+websockets
+SpeechRecognition
+pydub
+pyaudio
+google-generativeai
