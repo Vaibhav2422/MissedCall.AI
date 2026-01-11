@@ -1,4 +1,13 @@
 import streamlit as st
+
+# Set page config FIRST (must be before any other st commands)
+st.set_page_config(
+    page_title="MissedCall.AI",
+    page_icon="📞",
+    layout="centered",
+    initial_sidebar_state="expanded"
+)
+
 import os
 from datetime import datetime
 import openai
@@ -251,14 +260,6 @@ Make your recommended action BOLD and prominent."""
             return f"This might be a {enriched_data.get('caller_label', 'caller')}. Limited context available."
         else:
             return "This was a missed call. Unable to generate detailed analysis at this time."
-
-# Set page config for dark theme
-st.set_page_config(
-    page_title="MissedCall.AI",
-    page_icon="📞",
-    layout="centered",
-    initial_sidebar_state="expanded"
-)
 
 # Custom CSS for dark theme
 st.markdown("""
