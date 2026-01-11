@@ -10,9 +10,6 @@ import re
 from datetime import datetime
 import base64
 from io import BytesIO
-from pydub import AudioSegment
-import tempfile
-import speech_recognition as sr
 from typing import List
 import concurrent.futures
 from functools import lru_cache
