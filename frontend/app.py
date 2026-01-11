@@ -2,6 +2,31 @@ import streamlit as st
 import requests
 import os
 from datetime import datetime
+import sys
+import re
+
+# Try to import backend functions directly
+try:
+    from backend.main import mock_enrich_data, determine_response_state, call_gemini_api
+    from backend.sms_handler import SMSHandler
+    BACKEND_AVAILABLE = True
+except:
+    BACKEND_AVAILABLE = False
+    # Fallback functions
+    def mock_enrich_data(phone_number):
+        return {
+            "caller_label": "Unknown",
+            "category": "unknown",
+            "confidence": "low",
+            "is_known": False
+        }
+    
+    def determine_response_state(enriched_data, sms_content, user_input):
+        return "NO_CONTEXT", "No context available", 0.2
+    
+    class SMSHandler:
+        def extract_sms_for_number(self, phone_number):
+            return None
 
 # Set page config for dark theme
 st.set_page_config(
@@ -150,14 +175,85 @@ if st.button("🎤 Explain this missed call", use_container_width=True, key="ana
         
         with st.spinner("Analyzing missed call..."):
             try:
-                # Make API call to backend
-                response = requests.post("http://localhost:8000/explain", json=payload)
-                
-                if response.status_code == 200:
-                    result = response.json()
+                # Try local backend first, then fall back to HTTP
+                if BACKEND_AVAILABLE:
+                    # Use backend directly
+                    sms_handler = SMSHandler()
+                    enriched_data = mock_enrich_data(phone_number)
                     
-                    # Display results
-                    st.success("Analysis Complete!")
+                    # Override with user selection
+                    if caller_label and caller_label != "Unknown":
+                        caller_type_mapping = {
+                            "Bank": "Bank/Financial Service",
+                            "Delivery": "Delivery/Logistics",
+                            "Service": "Service Provider",
+                            "Family/Friend": "Family/Friend",
+                            "Business": "Business"
+                        }
+                        enriched_data["caller_label"] = caller_type_mapping.get(caller_label, caller_label)
+                        enriched_data["is_known"] = True
+                        enriched_data["confidence"] = "high"
+                    
+                    sms_content = sms_handler.extract_sms_for_number(phone_number)
+                    state, context_desc, confidence_score = determine_response_state(enriched_data, sms_content, voice_input)
+                    
+                    # Generate explanation using Gemini
+                    import openai
+                    import google.generativeai as genai
+                    from dotenv import load_dotenv
+                    
+                    load_dotenv()
+                    gemini_api_key = os.getenv("GEMINI_API_KEY")
+                    if gemini_api_key:
+                        genai.configure(api_key=gemini_api_key)
+                        try:
+                            prompt = f"""You are an intelligent assistant helping explain a missed call to an Indian user.
+
+Phone number: {phone_number}
+Caller: {enriched_data.get('caller_label', 'Unknown')}
+{"User's note: " + voice_input if voice_input else ""}
+
+Provide:
+1. **What this call is likely about**
+2. **Risk assessment** - Is this urgent? Could be spam?
+3. **Action recommendation** - CALLBACK NOW, CALLBACK LATER, IGNORE, VERIFY FIRST, or WAIT
+4. **Why this action**
+
+Be specific and helpful for an Indian user.
+Respond in {language}.
+Make your recommendation BOLD."""
+                            
+                            model = genai.GenerativeModel('gemini-2.0-flash')
+                            response = model.generate_content(prompt)
+                            explanation = response.text if response else "Unable to generate explanation"
+                        except:
+                            explanation = f"This appears to be a {enriched_data.get('caller_label', 'missed')} call. Please check manually."
+                    else:
+                        explanation = f"This appears to be a {enriched_data.get('caller_label', 'missed')} call."
+                    
+                    result = {
+                        "explanation": explanation,
+                        "state": state,
+                        "caller_info": {
+                            "label": enriched_data.get('caller_label'),
+                            "category": enriched_data.get('category', 'unknown'),
+                            "is_known": enriched_data.get('is_known', False)
+                        },
+                        "sms_content": [sms['content'] for sms in sms_content] if sms_content else None,
+                        "suggested_action": "Check the analysis above"
+                    }
+                else:
+                    # Try HTTP backend
+                    response = requests.post("http://localhost:8000/explain", json=payload, timeout=10)
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                    else:
+                        st.error(f"Error: {response.status_code} - {response.text}")
+                        st.stop()
+                
+                # Display results
+                st.success("Analysis Complete!")
                     
                     # Show state information
                     state_colors = {
